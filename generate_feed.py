@@ -116,3 +116,11 @@ def main():
    articles.append(Article(url,item.findtext("title",""),item.findtext("description",""),datetime.strptime(item.findtext("pubDate"),"%a, %d %b %Y %H:%M:%S %z"),item.findtext("author",""),item.findtext("category",""),item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded",""))); seen.add(url)
  articles=sorted(articles,key=lambda x:x.published,reverse=True)[:args.limit]; xml=build_feed(articles); out=Path(args.output); out.parent.mkdir(parents=True,exist_ok=True); write_pages(articles,out.parent); out.write_bytes(xml); print(f"Wrote {out} ({len(articles)} items)")
 if __name__=="__main__": main()
+
+
+def validate_feed(xml,expected):
+ root=etree.fromstring(xml); items=root.xpath("/rss/channel/item")
+ if len(items)!=expected: raise RuntimeError(f"Feed has {len(items)} items; expected {expected}")
+ for item in items:
+  body=item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded","")
+  if len(BeautifulSoup(body,"lxml").get_text(" ",strip=True))<100: raise RuntimeError("Article body is unexpectedly short")
