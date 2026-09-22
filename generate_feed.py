@@ -84,7 +84,7 @@ def schema_data(soup: BeautifulSoup) -> dict:
     return {}
 
 
-def clean_content(soup: BeautifulSoup, page_url: str) -> str:
+def clean_content(soup: BeautifulSoup, page_url: str, cover_url: str = "") -> str:
     content = soup.select_one(".news-content .grid-cols-left")
     if content is None:
         raise RuntimeError(f"Main article content not found: {page_url}")
@@ -140,6 +140,17 @@ def clean_content(soup: BeautifulSoup, page_url: str) -> str:
     for node in list(content.find_all(True)):
         if node.name not in allowed_tags:
             node.unwrap()
+
+    # KOReader can derive an EPUB thumbnail from the first image. Put MirF's
+    # lead image first, unless the same URL is already the first body image.
+    if cover_url:
+        cover_url = urljoin(page_url, cover_url)
+        first_image = content.find("img", src=True)
+        if first_image is None or first_image.get("src") != cover_url:
+            cover = soup.new_tag("figure")
+            cover_image = soup.new_tag("img", src=cover_url, alt="")
+            cover.append(cover_image)
+            content.insert(0, cover)
     return "".join(str(child) for child in content.contents).strip()
 
 
@@ -161,6 +172,8 @@ def parse_article(session: requests.Session, url: str) -> Article:
     else:
         author = str(author_data or "")
     category_node = soup.select_one(".news-header .tag-colors-name")
+    cover_node = soup.select_one('meta[property="og:image"][content]')
+    cover_url = cover_node.get("content", "") if cover_node else ""
     description = data.get("description", "")
     return Article(
         url=url,
@@ -169,7 +182,7 @@ def parse_article(session: requests.Session, url: str) -> Article:
         published=published,
         author=author.strip(),
         category=category_node.get_text(" ", strip=True) if category_node else "",
-        html=clean_content(soup, url),
+        html=clean_content(soup, url, cover_url),
     )
 
 
@@ -218,7 +231,11 @@ def validate_feed(xml: bytes, expected: int) -> None:
             raise RuntimeError(f"Article body is unexpectedly short: {link}")
         if re.search(r"<(script|iframe|form)\b", encoded, re.I):
             raise RuntimeError(f"Unsafe tag remains in article: {link}")
-        for img in BeautifulSoup(encoded, "lxml").find_all("img", src=True):
+        encoded_soup = BeautifulSoup(encoded, "lxml")
+        first_img = encoded_soup.find("img", src=True)
+        if first_img is None:
+            raise RuntimeError(f"Article has no cover image: {link}")
+        for img in encoded_soup.find_all("img", src=True):
             if not img["src"].startswith(("https://www.mirf.ru/", "https://mirf.ru/")):
                 raise RuntimeError(f"Non-MirF image URL: {img['src']}")
 

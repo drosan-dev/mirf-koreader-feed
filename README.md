@@ -3,6 +3,8 @@
 Generates an RSS 2.0 feed containing the 30 latest items from
 [`mirf.ru/articles`](https://www.mirf.ru/articles). Each item contains the
 cleaned full article in `content:encoded`; images keep their original MirF URLs.
+The article's lead image is placed first so KOReader can use it as the EPUB
+cover/thumbnail.
 
 The GitHub Actions workflow rebuilds and publishes the feed to GitHub Pages
 every three hours. It can also be started manually from the Actions tab.
