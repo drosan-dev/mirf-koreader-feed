@@ -11,7 +11,8 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup, Comment
 from lxml import etree
-BASE_URL="https://www.mirf.ru"; SOURCE_FEED_URL=f"{BASE_URL}/feed"; PUBLIC_BASE_URL="https://drosan-dev.github.io/mirf-koreader-feed"; TIMEOUT=45\nPAGE_STYLE="body{font-family:serif;line-height:1.45;margin:1em}img{max-width:100%;height:auto}figure{margin:1em 0}figcaption{font-size:.85em;font-style:italic;margin-top:.35em}blockquote{margin:1em .4em;padding:.25em .8em;border-left:4px solid #555}aside{margin:1em 0;padding:.7em;border:1px solid #777}h2,h3,h4{margin-top:1.4em;margin-bottom:.5em}ul,ol{padding-left:1.5em}"
+BASE_URL="https://www.mirf.ru"; SOURCE_FEED_URL=f"{BASE_URL}/feed"; PUBLIC_BASE_URL="https://drosan-dev.github.io/mirf-koreader-feed"; TIMEOUT=45
+PAGE_STYLE="body{font-family:serif;line-height:1.45;margin:1em}img{max-width:100%;height:auto}figure{margin:1em 0}figcaption{font-size:.85em;font-style:italic;margin-top:.35em}blockquote{margin:1em .4em;padding:.25em .8em;border-left:4px solid #555}aside{margin:1em 0;padding:.7em;border:1px solid #777}h2,h3,h4{margin-top:1.4em;margin-bottom:.5em}ul,ol{padding-left:1.5em}"
 @dataclass
 class Article:
  url:str; title:str; description:str; published:datetime; author:str; category:str; html:str
