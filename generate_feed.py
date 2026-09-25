@@ -11,7 +11,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup, Comment
 from lxml import etree
-BASE_URL="https://www.mirf.ru"; SOURCE_FEED_URL=f"{BASE_URL}/feed"; PUBLIC_BASE_URL="https://drosan-dev.github.io/mirf-koreader-feed"; TIMEOUT=45
+BASE_URL="https://www.mirf.ru"; SOURCE_FEED_URL=f"{BASE_URL}/feed"; PUBLIC_BASE_URL="https://drosan-dev.github.io/mirf-koreader-feed"; TIMEOUT=45\nPAGE_STYLE="body{font-family:serif;line-height:1.45;margin:1em}img{max-width:100%;height:auto}figure{margin:1em 0}figcaption{font-size:.85em;font-style:italic;margin-top:.35em}blockquote{margin:1em .4em;padding:.25em .8em;border-left:4px solid #555}aside{margin:1em 0;padding:.7em;border:1px solid #777}h2,h3,h4{margin-top:1.4em;margin-bottom:.5em}ul,ol{padding-left:1.5em}"
 @dataclass
 class Article:
  url:str; title:str; description:str; published:datetime; author:str; category:str; html:str
@@ -48,9 +48,59 @@ def schema_data(soup):
 def clean_content(soup,url,cover=""):
  content=soup.select_one(".news-content .grid-cols-left")
  if content is None: raise RuntimeError(f"Main article content not found: {url}")
- selectors=["script","style","noscript","iframe","form","button",".advt-mf",".news-advt",".message-repost",".share",".news-su_see_also",".articles",".comments",".social",".news-author",".news-hash",".news-d-line",".advt","[class*='advert']","[class*='banner']","[class*='repost']"]
+
+ # Interactive content does not work in EPUB. Keep a useful link for quizzes,
+ # retain a compact podcast description, and remove video players entirely.
+ for quiz in list(content.select(".news-quiz")):
+  notice=soup.new_tag("aside")
+  title=soup.new_tag("p"); strong=soup.new_tag("strong"); strong.string="Интерактивный тест"
+  title.append(strong); notice.append(title)
+  text=soup.new_tag("p"); text.string="Этот тест работает только на сайте Мир фантастики."
+  notice.append(text)
+  link=soup.new_tag("a",href=url); link.string="Пройти тест на сайте"
+  notice.append(link); quiz.replace_with(notice)
+ for podcast in content.select(".section-podcast"):
+  for node in podcast.select(".podcast-subscribe, .podcast-descr__footer"): node.decompose()
+  link=soup.new_tag("p"); anchor=soup.new_tag("a",href=url); anchor.string="Открыть выпуск на сайте Мир фантастики"
+  link.append(anchor); podcast.append(link)
+
+ selectors=["script","style","noscript","iframe","form","button","video",".news-video",".video-list",".video-preview",".advt-mf",".news-advt",".message-repost",".share",".news-su_see_also",".articles",".comments",".social",".news-author",".news-hash",".news-d-line",".advt","[class*='advert']","[class*='banner']","[class*='repost']"]
  for selector in selectors:
   for node in content.select(selector): node.decompose()
+
+ # Preserve MirF-specific meaning with simple semantic HTML that renders well
+ # on monochrome readers even when the original site CSS is unavailable.
+ for quote in list(content.select(".mf-quote")):
+  block=soup.new_tag("blockquote")
+  subtitle=quote.select_one(".mf-quote__subtitle")
+  title=quote.select_one(".mf-quote__title")
+  label=(subtitle or title)
+  if label:
+   p=soup.new_tag("p"); strong=soup.new_tag("strong")
+   strong.string=label.get_text(" ",strip=True); p.append(strong); block.append(p)
+  description=quote.select_one(".mf-quote__description")
+  if description:
+   for child in list(description.contents): block.append(child.extract())
+  else:
+   p=soup.new_tag("p"); p.string=quote.get_text(" ",strip=True); block.append(p)
+  quote.replace_with(block)
+
+ for callout in list(content.select(".news-su_div")):
+  if not callout.get_text(" ",strip=True) and not callout.find("img"):
+   callout.decompose(); continue
+  callout.name="aside"
+
+ for floating in content.select(".news-float"): floating.name="aside"
+ for bold in content.find_all("b"): bold.name="strong"
+
+ for caption in content.select(".news-caption"):
+  caption.name="figure"
+  info=caption.select_one(".block-info")
+  if info: info.name="figcaption"
+
+ for gallery in content.select(".news-d-gallery"):
+  for node in gallery.select(".slider-arrow-left, .slider-arrow-right, .slider-pagin"): node.decompose()
+
  for comment in content.find_all(string=lambda x:isinstance(x,Comment)): comment.extract()
  for picture in list(content.find_all("picture")):
   old=picture.find("img"); src=(old.get("src") or old.get("data-src")) if old else None
@@ -65,7 +115,7 @@ def clean_content(soup,url,cover=""):
    node["src"]=urljoin(url,src)
   elif node.name=="a" and node.get("href"): node["href"]=urljoin(url,node["href"])
   node.attrs={k:v for k,v in node.attrs.items() if k in {"href","src","alt","title"}}
- allowed={"a","blockquote","br","div","em","figcaption","figure","h2","h3","h4","hr","i","img","li","ol","p","span","strong","sub","sup","table","tbody","td","th","thead","tr","u","ul"}
+ allowed={"a","aside","blockquote","br","div","em","figcaption","figure","h2","h3","h4","hr","i","img","li","ol","p","span","strong","sub","sup","table","tbody","td","th","thead","tr","u","ul"}
  for node in list(content.find_all(True)):
   if node.name not in allowed: node.unwrap()
  if cover:
@@ -92,7 +142,7 @@ def page_name(url): return hashlib.sha256(url.encode()).hexdigest()[:20]+".html"
 def write_pages(articles,out):
  pages=out/"items"; pages.mkdir(parents=True,exist_ok=True); expected=set()
  for a in articles:
-  name=page_name(a.url); expected.add(name); doc=f'<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>{escape(a.title)}</title></head><body><h1>{escape(a.title)}</h1><article>{a.html}</article></body></html>'; (pages/name).write_text(doc,encoding="utf-8")
+  name=page_name(a.url); expected.add(name); doc=f'<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>{escape(a.title)}</title><style>{PAGE_STYLE}</style></head><body><h1>{escape(a.title)}</h1><article>{a.html}</article></body></html>'; (pages/name).write_text(doc,encoding="utf-8")
  for old in pages.glob("*.html"):
   if old.name not in expected: old.unlink()
 
