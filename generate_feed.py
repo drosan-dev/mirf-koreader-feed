@@ -83,7 +83,10 @@ def parse_article(session,entry):
  elif isinstance(a,dict): author=a.get("name","")
  else: author=str(a or "")
  category=soup.select_one(".news-header .tag-colors-name"); cover=soup.select_one('meta[property="og:image"][content]')
- return Article(url,title.get_text(" ",strip=True),re.sub(r"\s+"," ",data.get("description","")).strip(),published,(author or entry.get("author","")).strip(),category.get_text(" ",strip=True) if category else "",clean_content(soup,url,cover.get("content","") if cover else ""))
+ description=data.get("description")
+ if not isinstance(description,str): description=entry.get("description","")
+ if not isinstance(description,str): description=""
+ return Article(url,title.get_text(" ",strip=True),re.sub(r"\s+"," ",description).strip(),published,(author or entry.get("author","")).strip(),category.get_text(" ",strip=True) if category else "",clean_content(soup,url,cover.get("content","") if cover else ""))
 
 def page_name(url): return hashlib.sha256(url.encode()).hexdigest()[:20]+".html"
 def write_pages(articles,out):
