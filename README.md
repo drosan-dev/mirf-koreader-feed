@@ -1,31 +1,39 @@
-# MirF full-text RSS for KOReader
+# MirF Feed
 
-Generates an RSS 2.0 feed containing the 30 latest items from
-[`mirf.ru/articles`](https://www.mirf.ru/articles). Each item contains the
-cleaned full article in `content:encoded`; images keep their original MirF URLs.
-The article's lead image is placed first so KOReader can use it as the EPUB
-cover/thumbnail.
+Генератор полнотекстовой RSS 2.0-ленты для публикаций журнала
+[«Мир фантастики»](https://www.mirf.ru/).
 
-The GitHub Actions workflow rebuilds and publishes the feed to GitHub Pages
-every three hours. It can also be started manually from the Actions tab.
+Скрипт получает свежие записи из официальной ленты сайта, загружает страницы
+статей и преобразует их в формат, пригодный для чтения в RSS-клиентах и других
+приложениях, поддерживающих RSS 2.0.
 
-## Feed URL
+## Что попадает в ленту
 
-```text
-https://drosan-dev.github.io/mirf-koreader-feed/feed.xml
-```
+- 30 последних публикаций с `mirf.ru`;
+- очищенный полный текст статьи в `content:encoded`;
+- заголовок, описание, дата публикации, автор и рубрика;
+- исходные изображения с абсолютными URL;
+- ссылка на исходную публикацию в `guid`;
+- отдельная статическая HTML-страница для каждой статьи.
 
-## KOReader
+При обработке удаляются реклама, формы, кнопки, видеоплееры и другие элементы,
+которые не работают вне сайта. Ссылки приводятся к абсолютному виду, а цитаты,
+подписи к изображениям и информационные блоки сохраняются в простом семантическом
+HTML.
 
-1. Open the top menu and choose **News downloader (RSS/Atom)**.
-2. Choose **Edit news feeds**, then **Add new feed**.
-3. Paste the feed URL above and set the limit to `30`.
-4. Keep **Download full article** off: the feed already contains the cleaned
-   full text. Turn **Include images** on if images should be saved in the EPUB.
-5. Go back to **News downloader (RSS/Atom)** and choose **Sync news feeds**.
-6. After the download finishes, choose **Go to news folder**.
+## Публикация
 
-## Local run
+GitHub Actions обновляет ленту и публикует содержимое каталога `public` через
+GitHub Pages каждые три часа. Обновление также можно запустить вручную на вкладке
+**Actions**, выбрав workflow **Update full-text RSS feed**.
+
+Основной файл ленты после публикации доступен как `feed.xml` в корне сайта
+GitHub Pages проекта. Его можно добавить в любой RSS-клиент, поддерживающий
+полнотекстовые RSS 2.0-ленты.
+
+## Локальный запуск
+
+В автоматической сборке используется Python 3.12.
 
 ```bash
 python -m pip install -r requirements.txt
@@ -33,8 +41,37 @@ python generate_feed.py
 python validate_feed.py
 ```
 
-The generated file is `public/feed.xml`.
+Результат сохраняется в `public/feed.xml`, а HTML-страницы статей — в
+`public/items/`.
 
-MirF owns the article text and images. This project only transforms publicly
-available pages into a personal reader-friendly feed and does not mirror image
-files.
+Доступные параметры генератора:
+
+```text
+python generate_feed.py --output <путь> --limit <количество>
+```
+
+- `--output` задаёт путь к итоговому XML-файлу; по умолчанию
+  `public/feed.xml`.
+- `--limit` задаёт максимальное число записей; по умолчанию `30`.
+
+Стандартная проверка `validate_feed.py` рассчитана на ленту из 30 записей.
+
+При повторном запуске генератор дополняет свежие материалы записями из уже
+существующей ленты, чтобы сохранять заданное количество публикаций, даже если
+официальная лента источника содержит меньше записей.
+
+## Структура проекта
+
+```text
+generate_feed.py       генерация ленты и HTML-страниц
+validate_feed.py       проверка количества и содержимого записей
+requirements.txt       зависимости Python
+public/feed.xml        сгенерированная RSS-лента
+public/items/          сгенерированные страницы статей
+```
+
+## Права на материалы
+
+Тексты и изображения принадлежат их правообладателям. Проект преобразует
+публично доступные страницы в удобный для чтения формат и не копирует файлы
+изображений на свою сторону.
