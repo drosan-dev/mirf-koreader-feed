@@ -1,6 +1,6 @@
 import unittest
 from datetime import datetime, timezone
-from generate_feed import Article, build_catalog, build_feed, page_name, validate_feed
+from generate_feed import Article, build_catalog, build_feed, discover_rss_catalog, page_name, validate_feed
 
 
 class ReedDiscoverTest(unittest.TestCase):
@@ -24,6 +24,18 @@ class ReedDiscoverTest(unittest.TestCase):
         self.assertEqual(item["sourceId"], "mirf")
         self.assertEqual(item["readingMinutes"], 1)
         self.assertEqual(item["readerUrl"], f"items/{page_name(item['url'])}")
+
+    def test_regular_rss_becomes_external_recommendation(self):
+        xml = """<rss><channel><item><title>Понятная статья</title><link>https://example.test/science</link><description>Короткое объяснение сложной темы</description><pubDate>Tue, 29 Sep 2026 12:00:00 +0000</pubDate></item></channel></rss>"""
+        class Response:
+            text = xml
+            def raise_for_status(self): pass
+        class Session:
+            def get(self, *_args, **_kwargs): return Response()
+        items = discover_rss_catalog(Session(), {"id":"science","name":"Наука","feed":"https://example.test/feed","topic":"Научпоп","limit":5})
+        self.assertEqual(items[0]["source"], "Наука")
+        self.assertEqual(items[0]["category"], "Научпоп")
+        self.assertIsNone(items[0]["readerUrl"])
 
 
 if __name__ == "__main__":

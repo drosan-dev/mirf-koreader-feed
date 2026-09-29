@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse, hashlib, json, re, time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from email.utils import format_datetime
+from email.utils import format_datetime, parsedate_to_datetime
 from html import escape
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -175,6 +175,48 @@ def write_catalog(articles,out):
  (data_dir/"articles.json").write_text(json.dumps(catalog,ensure_ascii=False,indent=2),encoding="utf-8")
  (data_dir/"articles.js").write_text("window.REED_ARTICLES="+json.dumps(catalog,ensure_ascii=False,separators=(",",":"))+";",encoding="utf-8")
 
+def parse_date(value):
+ if not value: return datetime.now(timezone.utc)
+ try: return parsedate_to_datetime(value).astimezone(timezone.utc)
+ except (TypeError,ValueError,OverflowError):
+  try: return datetime.fromisoformat(value.replace("Z","+00:00")).astimezone(timezone.utc)
+  except (TypeError,ValueError): return datetime.now(timezone.utc)
+
+def discover_rss_catalog(session,source):
+ """Normalize a regular RSS/Atom feed into lightweight recommendation cards."""
+ parser=etree.XMLParser(recover=True); root=etree.fromstring(fetch(session,source["feed"]).encode(),parser); result=[]
+ nodes=root.xpath('//*[local-name()="item"]') or root.xpath('//*[local-name()="entry"]')
+ for node in nodes[:source.get("limit",5)]:
+  def text_of(*names):
+   for name in names:
+    found=node.xpath(f'./*[local-name()="{name}"]')
+    if found:
+     value=" ".join(found[0].itertext()).strip()
+     if value:return value
+   return ""
+  title=text_of("title"); link=text_of("link")
+  if not link:
+   links=node.xpath('./*[local-name()="link"]/@href'); link=links[0] if links else ""
+  if not title or not link or not link.startswith(("http://","https://")): continue
+  raw=text_of("encoded","content","description","summary"); summary=re.sub(r"\s+"," ",BeautifulSoup(raw,"lxml").get_text(" ",strip=True)).strip()
+  if len(summary)>320: summary=summary[:317].rsplit(" ",1)[0]+"…"
+  words=len(summary.split()); published=parse_date(text_of("pubDate","published","updated","date"))
+  result.append({"id":hashlib.sha256(link.encode()).hexdigest()[:20],"title":title,"source":source["name"],"sourceId":source["id"],"summary":summary or "Открыть материал на сайте источника","readingMinutes":max(1,round(words/180)) if words>=60 else None,"published":published.isoformat(),"category":source.get("topic",""),"author":text_of("creator","author"),"url":link,"readerUrl":None,"image":""})
+ return result
+
+def append_external_sources(session,catalog,config_path="config/sources.json"):
+ config=json.loads(Path(config_path).read_text(encoding="utf-8"))
+ seen={item["url"] for item in catalog["articles"]}
+ for source in config["sources"]:
+  if not source.get("enabled") or source.get("adapter")!="rss": continue
+  try:
+   entries=discover_rss_catalog(session,source)
+   catalog["articles"].extend(item for item in entries if item["url"] not in seen)
+   seen.update(item["url"] for item in entries); print(f"RSS {source['name']}: {len(entries)} items")
+  except Exception as error: print(f"RSS {source['name']} skipped: {error}")
+ catalog["articles"].sort(key=lambda item:item["published"],reverse=True)
+ return catalog
+
 def build_feed(articles):
  rss=etree.Element("rss",version="2.0",nsmap={"content":"http://purl.org/rss/1.0/modules/content/"}); ch=etree.SubElement(rss,"channel")
  fields={"title":"Мир фантастики — полный текст для KOReader","link":SOURCE_FEED_URL,"description":"30 последних публикаций mirf.ru с очищенным полным текстом и оригинальными изображениями","language":"ru-ru","lastBuildDate":format_datetime(datetime.now(timezone.utc)),"generator":"mirf-koreader-feed","ttl":"180"}
@@ -196,7 +238,7 @@ def main():
    url=item.findtext("guid","")
    if not url or url in seen: continue
    articles.append(Article(url,item.findtext("title",""),item.findtext("description",""),datetime.strptime(item.findtext("pubDate"),"%a, %d %b %Y %H:%M:%S %z"),item.findtext("author",""),item.findtext("category",""),item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded",""))); seen.add(url)
- articles=sorted(articles,key=lambda x:x.published,reverse=True)[:args.limit]; xml=build_feed(articles); out=Path(args.output); out.parent.mkdir(parents=True,exist_ok=True); write_pages(articles,out.parent); write_catalog(articles,out.parent); out.write_bytes(xml); print(f"Wrote {out} and data/articles.json ({len(articles)} items)")
+ articles=sorted(articles,key=lambda x:x.published,reverse=True)[:args.limit]; xml=build_feed(articles); out=Path(args.output); out.parent.mkdir(parents=True,exist_ok=True); write_pages(articles,out.parent); catalog=append_external_sources(session,build_catalog(articles)); data_dir=out.parent/"data"; data_dir.mkdir(parents=True,exist_ok=True); (data_dir/"articles.json").write_text(json.dumps(catalog,ensure_ascii=False,indent=2),encoding="utf-8"); (data_dir/"articles.js").write_text("window.REED_ARTICLES="+json.dumps(catalog,ensure_ascii=False,separators=(",",":"))+";",encoding="utf-8"); out.write_bytes(xml); print(f"Wrote {out} and data/articles.json ({len(catalog['articles'])} recommendations)")
 if __name__=="__main__": main()
 
 

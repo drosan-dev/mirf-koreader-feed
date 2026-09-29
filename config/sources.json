@@ -8,6 +8,86 @@
       "feed": "https://www.mirf.ru/feed",
       "adapter": "mirf",
       "enabled": true
+    },
+    {
+      "id": "nplus1",
+      "name": "N + 1",
+      "homepage": "https://nplus1.ru/",
+      "feed": "https://nplus1.ru/rss",
+      "adapter": "rss",
+      "topic": "Научпоп",
+      "limit": 6,
+      "enabled": true
+    },
+    {
+      "id": "tesera",
+      "name": "Tesera",
+      "homepage": "https://tesera.ru/",
+      "feed": "https://tesera.ru/rss/",
+      "adapter": "rss",
+      "topic": "Настольные игры",
+      "limit": 5,
+      "enabled": true
+    },
+    {
+      "id": "boardgamer",
+      "name": "Настольный блог",
+      "homepage": "https://boardgamer.ru/",
+      "feed": "https://boardgamer.ru/feed",
+      "adapter": "rss",
+      "topic": "Настольные игры",
+      "limit": 5,
+      "enabled": true
+    },
+    {
+      "id": "habr-programming",
+      "name": "Хабр · Программирование",
+      "homepage": "https://habr.com/ru/hubs/programming/articles/",
+      "feed": "https://habr.com/ru/rss/hub/programming/all/?fl=ru",
+      "adapter": "rss",
+      "topic": "Программирование и технологии",
+      "limit": 6,
+      "enabled": true
+    },
+    {
+      "id": "tproger",
+      "name": "Tproger",
+      "homepage": "https://tproger.ru/",
+      "feed": "https://tproger.ru/feed",
+      "adapter": "rss",
+      "topic": "Программирование и технологии",
+      "limit": 5,
+      "enabled": true
+    },
+    {
+      "id": "habr-gamedev",
+      "name": "Хабр · Разработка игр",
+      "homepage": "https://habr.com/ru/hubs/gamedev/articles/",
+      "feed": "https://habr.com/ru/rss/hub/gamedev/all/?fl=ru",
+      "adapter": "rss",
+      "topic": "Геймдизайн",
+      "limit": 5,
+      "enabled": true
+    },
+    {
+      "id": "app2top",
+      "name": "App2Top",
+      "homepage": "https://app2top.ru/",
+      "feed": "https://app2top.ru/feed/",
+      "adapter": "rss",
+      "topic": "Геймдизайн",
+      "limit": 5,
+      "enabled": true
+    },
+    {
+      "id": "stopgame-reviews",
+      "name": "StopGame · Обзоры",
+      "homepage": "https://stopgame.ru/review/new",
+      "feed": "https://rss.stopgame.ru/rss_review.xml",
+      "adapter": "rss",
+      "topic": "Компьютерные игры",
+      "limit": 6,
+      "enabled": true
     }
   ]
 }

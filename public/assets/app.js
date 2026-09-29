@@ -46,7 +46,7 @@ function articleCard(article) {
   const read = Boolean(saved?.read);
   const published = new Intl.DateTimeFormat("ru", { day: "numeric", month: "short" }).format(new Date(article.published));
   const readingUrl = article.readerUrl || article.url;
-  const external = article.custom ? ' target="_blank" rel="noreferrer"' : "";
+  const external = !article.readerUrl ? ' target="_blank" rel="noreferrer"' : "";
   const primary = state.route === "saved"
     ? `<button class="read ${read ? "saved" : ""}" data-action="read" data-id="${article.id}">${read ? "✓ Прочитано" : "Отметить прочитанным"}</button><button class="remove" data-action="remove" data-id="${article.id}">Удалить</button>`
     : `<button class="save ${selected ? "saved" : ""}" data-action="save" data-id="${article.id}">${selected ? "✓ В подборке" : "+ Почитать позже"}</button>`;
@@ -113,7 +113,7 @@ async function exportEpub(articles, button) {
   try {
     const chapters = await Promise.all(articles.map(async (article, index) => {
       let body;
-      if (article.custom) body = `<p>${escapeHtml(article.summary)}</p><p><a href="${escapeHtml(article.url)}">Открыть исходную статью</a></p>`;
+      if (!article.readerUrl) body = `<p>${escapeHtml(article.summary)}</p><p><a href="${escapeHtml(article.url)}">Открыть исходную статью</a></p>`;
       else {
         const response = await fetch(article.readerUrl); const html = await response.text();
         const articleBody = new DOMParser().parseFromString(html, "text/html").querySelector("article");
