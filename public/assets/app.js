@@ -28,6 +28,18 @@ function escapeHtml(value = "") {
   return value.replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
 }
 
+async function discoverTitle(url) {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const document = new DOMParser().parseFromString(await response.text(), "text/html");
+    const title = document.querySelector('meta[property="og:title"]')?.content || document.querySelector("title")?.textContent;
+    if (title?.trim()) return title.trim().replace(/\s+/g, " ");
+  } catch { /* Most cross-origin sites require the optional extraction backend. */ }
+  const slug = decodeURIComponent(url.pathname.split("/").filter(Boolean).at(-1) || "").replace(/[-_]+/g, " ").replace(/\.[a-z0-9]{2,5}$/i, "").trim();
+  return slug ? slug.charAt(0).toLocaleUpperCase("ru") + slug.slice(1) : url.hostname.replace(/^www\./, "");
+}
+
 function articleCard(article) {
   const saved = state.library.items[article.id];
   const selected = Boolean(saved);
@@ -143,7 +155,7 @@ async function start() {
   document.querySelector("#category-filter").addEventListener("change", event => { state.category = event.target.value; render(); });
   const panel = document.querySelector("#add-link-panel"), urlInput = document.querySelector("#add-link-url"), error = document.querySelector("#add-link-error");
   document.querySelector("#add-link-toggle").addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) urlInput.focus(); });
-  document.querySelector("#add-link-form").addEventListener("submit", event => {
+  document.querySelector("#add-link-form").addEventListener("submit", async event => {
     event.preventDefault(); error.hidden = true;
     try {
       const url = new URL(urlInput.value.trim());
@@ -151,10 +163,12 @@ async function start() {
       url.hash = ""; for (const key of [...url.searchParams.keys()]) if (/^(utm_|fbclid$|gclid$)/i.test(key)) url.searchParams.delete(key);
       let hash = 2166136261; for (const char of url.href) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
       const id = `link-${(hash >>> 0).toString(16)}`;
-      const article = { id, custom: true, title: document.querySelector("#add-link-title").value.trim() || url.hostname, source: url.hostname.replace(/^www\./, ""), summary: "Добавлено вручную · полный текст откроется на сайте источника", readingMinutes: null, published: new Date().toISOString(), category: "", url: url.href };
+      const submit = event.submitter; submit.disabled = true; submit.textContent = "Получаем заголовок…";
+      const title = await discoverTitle(url);
+      const article = { id, custom: true, title, source: url.hostname.replace(/^www\./, ""), summary: "Добавлено вручную · полный текст откроется на сайте источника", readingMinutes: null, published: new Date().toISOString(), category: "", url: url.href };
       state.library = updateItem(state.library, id, { savedAt: new Date().toISOString(), read: false, article });
       const existing = state.articles.findIndex(item => item.id === id); if (existing >= 0) state.articles[existing] = article; else state.articles.unshift(article);
-      saveLibrary(); event.target.reset(); panel.hidden = true; location.hash = "saved"; route();
+      saveLibrary(); event.target.reset(); submit.disabled = false; submit.textContent = "Сохранить"; panel.hidden = true; location.hash = "saved"; route();
     } catch (problem) { error.textContent = problem instanceof Error ? problem.message : "Проверьте ссылку"; error.hidden = false; }
   });
   document.querySelector("#feed").addEventListener("click", event => {
