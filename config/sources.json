@@ -20,16 +20,6 @@
       "enabled": true
     },
     {
-      "id": "tesera",
-      "name": "Tesera",
-      "homepage": "https://tesera.ru/",
-      "feed": "https://tesera.ru/rss/",
-      "adapter": "rss",
-      "topic": "Настольные игры",
-      "limit": 5,
-      "enabled": true
-    },
-    {
       "id": "boardgamer",
       "name": "Настольный блог",
       "homepage": "https://boardgamer.ru/",
