@@ -15,7 +15,7 @@ function updateItem(library, id, change) {
 }
 
 function formatMinutes(value) {
-  return `${Math.max(1, Number(value) || 1)} мин`;
+  return value ? `${Math.max(1, Number(value))} мин` : "внешняя ссылка";
 }
 
 const state = { articles: [], library: null, route: "discover", category: "" };
@@ -33,14 +33,16 @@ function articleCard(article) {
   const selected = Boolean(saved);
   const read = Boolean(saved?.read);
   const published = new Intl.DateTimeFormat("ru", { day: "numeric", month: "short" }).format(new Date(article.published));
+  const readingUrl = article.readerUrl || article.url;
+  const external = article.custom ? ' target="_blank" rel="noreferrer"' : "";
   const primary = state.route === "saved"
     ? `<button class="read ${read ? "saved" : ""}" data-action="read" data-id="${article.id}">${read ? "✓ Прочитано" : "Отметить прочитанным"}</button><button class="remove" data-action="remove" data-id="${article.id}">Удалить</button>`
     : `<button class="save ${selected ? "saved" : ""}" data-action="save" data-id="${article.id}">${selected ? "✓ В подборке" : "+ Почитать позже"}</button>`;
   return `<article class="card${read ? " is-read" : ""}">
     <div class="meta"><span class="source">${escapeHtml(article.source)}</span><span>·</span><span>${published}</span><span>·</span><span>${formatMinutes(article.readingMinutes)}</span></div>
-    <h3><a href="${escapeHtml(article.readerUrl)}">${escapeHtml(article.title)}</a></h3>
+    <h3><a href="${escapeHtml(readingUrl)}"${external}>${escapeHtml(article.title)}</a></h3>
     <p class="summary">${escapeHtml(article.summary || "Описание появится после следующего обновления источника.")}</p>
-    <div class="actions"><a href="${escapeHtml(article.readerUrl)}">Читать</a>${primary}</div>
+    <div class="actions"><a href="${escapeHtml(readingUrl)}"${external}>Читать</a>${primary}</div>
   </article>`;
 }
 
@@ -48,7 +50,7 @@ function render() {
   const feed = document.querySelector("#feed");
   const empty = document.querySelector("#empty");
   const savedIds = new Set(Object.keys(state.library.items));
-  const base = state.route === "saved" ? state.articles.filter(a => savedIds.has(a.id)) : state.articles;
+  const base = state.route === "saved" ? state.articles.filter(a => savedIds.has(a.id)) : state.articles.filter(a => !a.custom);
   const articles = state.category ? base.filter(a => a.category === state.category) : base;
   document.querySelector("#saved-count").textContent = savedIds.size;
   document.querySelector("#view-title").textContent = state.route === "saved" ? "Моя подборка" : "Новые рекомендации";
@@ -98,9 +100,13 @@ async function exportEpub(articles, button) {
   button.disabled = true; button.textContent = "Собираем EPUB…";
   try {
     const chapters = await Promise.all(articles.map(async (article, index) => {
-      const response = await fetch(article.readerUrl); const html = await response.text();
-      const articleBody = new DOMParser().parseFromString(html, "text/html").querySelector("article");
-      const body = articleBody ? [...articleBody.childNodes].map(node => new XMLSerializer().serializeToString(node)).join("") : `<p>${escapeHtml(article.summary)}</p>`;
+      let body;
+      if (article.custom) body = `<p>${escapeHtml(article.summary)}</p><p><a href="${escapeHtml(article.url)}">Открыть исходную статью</a></p>`;
+      else {
+        const response = await fetch(article.readerUrl); const html = await response.text();
+        const articleBody = new DOMParser().parseFromString(html, "text/html").querySelector("article");
+        body = articleBody ? [...articleBody.childNodes].map(node => new XMLSerializer().serializeToString(node)).join("") : `<p>${escapeHtml(article.summary)}</p>`;
+      }
       return { name: `chapter-${index + 1}.xhtml`, title: article.title, body };
     }));
     const nav = chapters.map((c, i) => `<li><a href="${c.name}">${escapeHtml(c.title)}</a></li>`).join("");
@@ -127,12 +133,30 @@ async function start() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       state.articles = (await response.json()).articles;
     }
-    const categories = [...new Set(state.articles.map(a => a.category).filter(Boolean))].sort();
+    const customArticles = Object.values(state.library.items).map(item => item.article).filter(Boolean);
+    state.articles.push(...customArticles.filter(custom => !state.articles.some(article => article.id === custom.id)));
+    const categories = [...new Set(state.articles.filter(a => !a.custom).map(a => a.category).filter(Boolean))].sort();
     document.querySelector("#category-filter").insertAdjacentHTML("beforeend", categories.map(c => `<option>${escapeHtml(c)}</option>`).join(""));
     route();
   } catch (error) { document.querySelector("#status").textContent = `Не удалось загрузить ленту. ${error.message}`; }
   addEventListener("hashchange", route);
   document.querySelector("#category-filter").addEventListener("change", event => { state.category = event.target.value; render(); });
+  const panel = document.querySelector("#add-link-panel"), urlInput = document.querySelector("#add-link-url"), error = document.querySelector("#add-link-error");
+  document.querySelector("#add-link-toggle").addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) urlInput.focus(); });
+  document.querySelector("#add-link-form").addEventListener("submit", event => {
+    event.preventDefault(); error.hidden = true;
+    try {
+      const url = new URL(urlInput.value.trim());
+      if (!/^https?:$/.test(url.protocol)) throw new Error("Нужна ссылка с http:// или https://");
+      url.hash = ""; for (const key of [...url.searchParams.keys()]) if (/^(utm_|fbclid$|gclid$)/i.test(key)) url.searchParams.delete(key);
+      let hash = 2166136261; for (const char of url.href) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+      const id = `link-${(hash >>> 0).toString(16)}`;
+      const article = { id, custom: true, title: document.querySelector("#add-link-title").value.trim() || url.hostname, source: url.hostname.replace(/^www\./, ""), summary: "Добавлено вручную · полный текст откроется на сайте источника", readingMinutes: null, published: new Date().toISOString(), category: "", url: url.href };
+      state.library = updateItem(state.library, id, { savedAt: new Date().toISOString(), read: false, article });
+      const existing = state.articles.findIndex(item => item.id === id); if (existing >= 0) state.articles[existing] = article; else state.articles.unshift(article);
+      saveLibrary(); event.target.reset(); panel.hidden = true; location.hash = "saved"; route();
+    } catch (problem) { error.textContent = problem instanceof Error ? problem.message : "Проверьте ссылку"; error.hidden = false; }
+  });
   document.querySelector("#feed").addEventListener("click", event => {
     const button = event.target.closest("button[data-action]"); if (!button) return;
     const { id, action } = button.dataset, current = state.library.items[id];

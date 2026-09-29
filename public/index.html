@@ -16,10 +16,21 @@
     <nav aria-label="Основная навигация">
       <a href="#discover" data-route="discover">Рекомендации</a>
       <a href="#saved" data-route="saved">Моя подборка <b id="saved-count" class="count">0</b></a>
+      <button id="add-link-toggle" class="nav-action" type="button">+ Добавить ссылку</button>
     </nav>
   </header>
 
   <main>
+    <section id="add-link-panel" class="add-link-panel" hidden>
+      <form id="add-link-form">
+        <div><strong>Добавить свою статью</strong><span>Ссылка сохранится в этом браузере</span></div>
+        <input id="add-link-url" name="url" type="url" inputmode="url" required placeholder="https://example.com/article" aria-label="Ссылка на статью">
+        <input id="add-link-title" name="title" type="text" placeholder="Название — необязательно" aria-label="Название статьи">
+        <button type="submit">Сохранить</button>
+      </form>
+      <p id="add-link-error" class="form-error" role="alert" hidden></p>
+    </section>
+
     <section class="toolbar" aria-label="Фильтры">
       <div>
         <h2 id="view-title">Новые рекомендации</h2>

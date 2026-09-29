@@ -8,8 +8,15 @@ body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 system-ui,
 .site-header nav{display:flex;gap:30px}
 .site-header nav a{color:var(--muted);text-decoration:none;font-size:14px}
 .site-header nav a.active{color:var(--ink);font-weight:650}
+.nav-action{border:0;padding:0;background:transparent;color:var(--accent);font:650 14px system-ui;cursor:pointer}
 .count{display:inline-grid;place-items:center;min-width:21px;height:21px;padding:0 5px;margin-left:4px;border-radius:20px;background:var(--accent);color:white;font-size:11px}
 main{max-width:1160px;margin:auto;padding:0 24px 72px}
+.add-link-panel{margin-top:28px;padding:18px;border:1px solid var(--line);border-radius:4px;background:var(--card)}
+.add-link-panel form{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(230px,1.5fr) minmax(180px,1fr) auto;gap:10px;align-items:center}
+.add-link-panel form div{display:flex;flex-direction:column}.add-link-panel form span{color:var(--muted);font-size:12px}
+.add-link-panel input{min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:3px;background:white;color:var(--ink);font:14px system-ui}
+.add-link-panel button{padding:10px 15px;border:1px solid var(--ink);border-radius:3px;background:var(--ink);color:white;font:650 13px system-ui;cursor:pointer}
+.form-error{margin:10px 0 0;color:var(--accent);font-size:13px}
 .toolbar{display:flex;align-items:end;justify-content:space-between;padding:48px 0 25px}
 .toolbar h2{font:500 29px Georgia,serif;margin:0}
 .toolbar p{margin:6px 0 0;color:var(--muted);font-size:14px}
@@ -36,5 +43,5 @@ main{max-width:1160px;margin:auto;padding:0 24px 72px}
 .empty p{margin-bottom:25px}
 footer{display:flex;justify-content:space-between;max-width:1160px;margin:auto;padding:25px 24px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 footer a{color:inherit}
-@media(max-width:850px){.feed{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:580px){.site-header{height:auto;padding:17px 18px;align-items:flex-start}.site-header nav{gap:12px;flex-direction:column}.toolbar{align-items:flex-start;gap:20px;flex-direction:column;padding-top:32px}.feed{grid-template-columns:1fr}.select-label,.select-label select{width:100%}footer{display:block}.card{min-height:0}}
+@media(max-width:850px){.feed{grid-template-columns:repeat(2,1fr)}.add-link-panel form{grid-template-columns:1fr 1fr}.add-link-panel form div{grid-column:1/-1}}
+@media(max-width:580px){.site-header{height:auto;padding:17px 18px;align-items:flex-start}.site-header nav{gap:12px;flex-direction:column}.add-link-panel form{grid-template-columns:1fr}.toolbar{align-items:flex-start;gap:20px;flex-direction:column;padding-top:32px}.feed{grid-template-columns:1fr}.select-label,.select-label select{width:100%}footer{display:block}.card{min-height:0}}
