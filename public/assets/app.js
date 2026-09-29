@@ -1,0 +1,146 @@
+const STORAGE_KEY = "reed-discover.library.v1";
+
+function readLibrary(storage = localStorage) {
+  try {
+    const value = JSON.parse(storage.getItem(STORAGE_KEY) || "{}");
+    return value && value.version === 1 && value.items ? value : { version: 1, items: {} };
+  } catch { return { version: 1, items: {} }; }
+}
+
+function updateItem(library, id, change) {
+  const items = { ...library.items };
+  if (change === null) delete items[id];
+  else items[id] = { ...(items[id] || {}), ...change };
+  return { version: 1, items };
+}
+
+function formatMinutes(value) {
+  return `${Math.max(1, Number(value) || 1)} мин`;
+}
+
+const state = { articles: [], library: null, route: "discover", category: "" };
+
+function saveLibrary() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.library));
+}
+
+function escapeHtml(value = "") {
+  return value.replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
+}
+
+function articleCard(article) {
+  const saved = state.library.items[article.id];
+  const selected = Boolean(saved);
+  const read = Boolean(saved?.read);
+  const published = new Intl.DateTimeFormat("ru", { day: "numeric", month: "short" }).format(new Date(article.published));
+  const primary = state.route === "saved"
+    ? `<button class="read ${read ? "saved" : ""}" data-action="read" data-id="${article.id}">${read ? "✓ Прочитано" : "Отметить прочитанным"}</button><button class="remove" data-action="remove" data-id="${article.id}">Удалить</button>`
+    : `<button class="save ${selected ? "saved" : ""}" data-action="save" data-id="${article.id}">${selected ? "✓ В подборке" : "+ Почитать позже"}</button>`;
+  return `<article class="card${read ? " is-read" : ""}">
+    <div class="meta"><span class="source">${escapeHtml(article.source)}</span><span>·</span><span>${published}</span><span>·</span><span>${formatMinutes(article.readingMinutes)}</span></div>
+    <h3><a href="${escapeHtml(article.readerUrl)}">${escapeHtml(article.title)}</a></h3>
+    <p class="summary">${escapeHtml(article.summary || "Описание появится после следующего обновления источника.")}</p>
+    <div class="actions"><a href="${escapeHtml(article.readerUrl)}">Читать</a>${primary}</div>
+  </article>`;
+}
+
+function render() {
+  const feed = document.querySelector("#feed");
+  const empty = document.querySelector("#empty");
+  const savedIds = new Set(Object.keys(state.library.items));
+  const base = state.route === "saved" ? state.articles.filter(a => savedIds.has(a.id)) : state.articles;
+  const articles = state.category ? base.filter(a => a.category === state.category) : base;
+  document.querySelector("#saved-count").textContent = savedIds.size;
+  document.querySelector("#view-title").textContent = state.route === "saved" ? "Моя подборка" : "Новые рекомендации";
+  document.querySelector("#view-subtitle").textContent = state.route === "saved" ? `${base.length} ${base.length === 1 ? "материал" : "материалов"} · хранится в этом браузере` : "Первый источник — журнал «Мир фантастики»";
+  document.querySelectorAll("[data-route]").forEach(a => a.classList.toggle("active", a.dataset.route === state.route));
+  feed.innerHTML = articles.map(articleCard).join("");
+  empty.hidden = articles.length > 0;
+  feed.hidden = articles.length === 0;
+  document.querySelector("#status").hidden = true;
+  let exportButton = document.querySelector("#export-epub");
+  if (state.route === "saved" && base.length) {
+    if (!exportButton) {
+      exportButton = document.createElement("button"); exportButton.id = "export-epub"; exportButton.className = "primary-link"; exportButton.textContent = "Скачать EPUB";
+      exportButton.addEventListener("click", () => exportEpub(base, exportButton));
+      document.querySelector(".toolbar").append(exportButton);
+    }
+  } else exportButton?.remove();
+}
+
+function route() {
+  state.route = location.hash === "#saved" ? "saved" : "discover";
+  state.category = ""; document.querySelector("#category-filter").value = ""; render();
+}
+
+function bytes(value) { return new TextEncoder().encode(value); }
+function crc32(data) {
+  let crc = -1;
+  for (const byte of data) { crc ^= byte; for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1)); }
+  return (crc ^ -1) >>> 0;
+}
+function u16(n) { return new Uint8Array([n & 255, n >>> 8 & 255]); }
+function u32(n) { return new Uint8Array([n & 255, n >>> 8 & 255, n >>> 16 & 255, n >>> 24 & 255]); }
+function zip(files) {
+  const local = [], central = []; let offset = 0;
+  for (const file of files) {
+    const name = bytes(file.name), data = typeof file.data === "string" ? bytes(file.data) : file.data, crc = crc32(data);
+    const header = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(0x800), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0), ...name]);
+    local.push(header, data);
+    central.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x800), ...u16(0), ...u16(0), ...u16(0), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset), ...name]));
+    offset += header.length + data.length;
+  }
+  const centralSize = central.reduce((n, part) => n + part.length, 0);
+  return new Blob([...local, ...central, new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(centralSize), ...u32(offset), ...u16(0)])], { type: "application/epub+zip" });
+}
+
+async function exportEpub(articles, button) {
+  button.disabled = true; button.textContent = "Собираем EPUB…";
+  try {
+    const chapters = await Promise.all(articles.map(async (article, index) => {
+      const response = await fetch(article.readerUrl); const html = await response.text();
+      const articleBody = new DOMParser().parseFromString(html, "text/html").querySelector("article");
+      const body = articleBody ? [...articleBody.childNodes].map(node => new XMLSerializer().serializeToString(node)).join("") : `<p>${escapeHtml(article.summary)}</p>`;
+      return { name: `chapter-${index + 1}.xhtml`, title: article.title, body };
+    }));
+    const nav = chapters.map((c, i) => `<li><a href="${c.name}">${escapeHtml(c.title)}</a></li>`).join("");
+    const manifest = chapters.map((c, i) => `<item id="c${i}" href="${c.name}" media-type="application/xhtml+xml"/>`).join("");
+    const spine = chapters.map((_, i) => `<itemref idref="c${i}"/>`).join("");
+    const files = [
+      { name: "mimetype", data: "application/epub+zip" },
+      { name: "META-INF/container.xml", data: `<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>` },
+      { name: "EPUB/nav.xhtml", data: `<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Моя подборка</title></head><body><nav epub:type="toc" xmlns:epub="http://www.idpf.org/2007/ops"><h1>Моя подборка</h1><ol>${nav}</ol></nav></body></html>` },
+      { name: "EPUB/package.opf", data: `<?xml version="1.0" encoding="utf-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">urn:uuid:${crypto.randomUUID()}</dc:identifier><dc:title>Моя подборка · Reed Discover</dc:title><dc:language>ru</dc:language><meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, "Z")}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>${manifest}</manifest><spine>${spine}</spine></package>` },
+      ...chapters.map(c => ({ name: `EPUB/${c.name}`, data: `<?xml version="1.0" encoding="utf-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${escapeHtml(c.title)}</title><style>body{font-family:serif;line-height:1.5}img{max-width:100%}</style></head><body><h1>${escapeHtml(c.title)}</h1>${c.body}</body></html>` }))
+    ];
+    const url = URL.createObjectURL(zip(files)); const link = document.createElement("a"); link.href = url; link.download = "reed-discover.epub"; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) { alert(`Не удалось собрать EPUB: ${error.message}`); }
+  finally { button.disabled = false; button.textContent = "Скачать EPUB"; }
+}
+
+async function start() {
+  state.library = readLibrary();
+  try {
+    if (globalThis.REED_ARTICLES) state.articles = globalThis.REED_ARTICLES.articles;
+    else {
+      const response = await fetch("data/articles.json", { cache: "no-cache" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      state.articles = (await response.json()).articles;
+    }
+    const categories = [...new Set(state.articles.map(a => a.category).filter(Boolean))].sort();
+    document.querySelector("#category-filter").insertAdjacentHTML("beforeend", categories.map(c => `<option>${escapeHtml(c)}</option>`).join(""));
+    route();
+  } catch (error) { document.querySelector("#status").textContent = `Не удалось загрузить ленту. ${error.message}`; }
+  addEventListener("hashchange", route);
+  document.querySelector("#category-filter").addEventListener("change", event => { state.category = event.target.value; render(); });
+  document.querySelector("#feed").addEventListener("click", event => {
+    const button = event.target.closest("button[data-action]"); if (!button) return;
+    const { id, action } = button.dataset, current = state.library.items[id];
+    if (action === "save") state.library = updateItem(state.library, id, current ? null : { savedAt: new Date().toISOString(), read: false });
+    if (action === "remove") state.library = updateItem(state.library, id, null);
+    if (action === "read") state.library = updateItem(state.library, id, { read: !current?.read, readAt: current?.read ? null : new Date().toISOString() });
+    saveLibrary(); render();
+  });
+}
+
+if (typeof document !== "undefined") start();

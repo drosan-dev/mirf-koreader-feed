@@ -15,7 +15,7 @@ BASE_URL="https://www.mirf.ru"; SOURCE_FEED_URL=f"{BASE_URL}/feed"; PUBLIC_BASE_
 PAGE_STYLE="body{font-family:serif;line-height:1.45;margin:1em}img{max-width:100%;height:auto}figure{margin:1em 0}figcaption{font-size:.85em;font-style:italic;margin-top:.35em}blockquote{margin:1em .4em;padding:.25em .8em;border-left:4px solid #555}aside{margin:1em 0;padding:.7em;border:1px solid #777}h2,h3,h4{margin-top:1.4em;margin-bottom:.5em}ul,ol{padding-left:1.5em}"
 @dataclass
 class Article:
- url:str; title:str; description:str; published:datetime; author:str; category:str; html:str
+ url:str; title:str; description:str; published:datetime; author:str; category:str; html:str; image:str=""
 
 def fetch(session,url):
  last=None
@@ -137,7 +137,8 @@ def parse_article(session,entry):
  description=data.get("description")
  if not isinstance(description,str): description=entry.get("description","")
  if not isinstance(description,str): description=""
- return Article(url,title.get_text(" ",strip=True),re.sub(r"\s+"," ",description).strip(),published,(author or entry.get("author","")).strip(),category.get_text(" ",strip=True) if category else "",clean_content(soup,url,cover.get("content","") if cover else ""))
+ image=cover.get("content","") if cover else ""
+ return Article(url,title.get_text(" ",strip=True),re.sub(r"\s+"," ",description).strip(),published,(author or entry.get("author","")).strip(),category.get_text(" ",strip=True) if category else "",clean_content(soup,url,image),image)
 
 def page_name(url): return hashlib.sha256(url.encode()).hexdigest()[:20]+".html"
 def write_pages(articles,out):
@@ -146,6 +147,33 @@ def write_pages(articles,out):
   name=page_name(a.url); expected.add(name); doc=f'<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>{escape(a.title)}</title><style>{PAGE_STYLE}</style></head><body><h1>{escape(a.title)}</h1><article>{a.html}</article></body></html>'; (pages/name).write_text(doc,encoding="utf-8")
  for old in pages.glob("*.html"):
   if old.name not in expected: old.unlink()
+
+def build_catalog(articles):
+ """Build the small, source-neutral index consumed by Reed Discover's UI."""
+ data=[]
+ for a in sorted(articles,key=lambda x:x.published,reverse=True):
+  words=len(BeautifulSoup(a.html,"lxml").get_text(" ",strip=True).split())
+  data.append({
+   "id":hashlib.sha256(a.url.encode()).hexdigest()[:20],
+   "title":a.title,
+   "source":"Мир фантастики",
+   "sourceId":"mirf",
+   "summary":a.description,
+   "readingMinutes":max(1,round(words/180)),
+   "published":a.published.isoformat(),
+   "category":a.category,
+   "author":a.author,
+   "url":a.url,
+   "readerUrl":f"items/{page_name(a.url)}",
+   "image":a.image,
+  })
+ return {"version":1,"generatedAt":datetime.now(timezone.utc).isoformat(),"articles":data}
+
+def write_catalog(articles,out):
+ data_dir=out/"data"; data_dir.mkdir(parents=True,exist_ok=True)
+ catalog=build_catalog(articles)
+ (data_dir/"articles.json").write_text(json.dumps(catalog,ensure_ascii=False,indent=2),encoding="utf-8")
+ (data_dir/"articles.js").write_text("window.REED_ARTICLES="+json.dumps(catalog,ensure_ascii=False,separators=(",",":"))+";",encoding="utf-8")
 
 def build_feed(articles):
  rss=etree.Element("rss",version="2.0",nsmap={"content":"http://purl.org/rss/1.0/modules/content/"}); ch=etree.SubElement(rss,"channel")
@@ -168,7 +196,7 @@ def main():
    url=item.findtext("guid","")
    if not url or url in seen: continue
    articles.append(Article(url,item.findtext("title",""),item.findtext("description",""),datetime.strptime(item.findtext("pubDate"),"%a, %d %b %Y %H:%M:%S %z"),item.findtext("author",""),item.findtext("category",""),item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded",""))); seen.add(url)
- articles=sorted(articles,key=lambda x:x.published,reverse=True)[:args.limit]; xml=build_feed(articles); out=Path(args.output); out.parent.mkdir(parents=True,exist_ok=True); write_pages(articles,out.parent); out.write_bytes(xml); print(f"Wrote {out} ({len(articles)} items)")
+ articles=sorted(articles,key=lambda x:x.published,reverse=True)[:args.limit]; xml=build_feed(articles); out=Path(args.output); out.parent.mkdir(parents=True,exist_ok=True); write_pages(articles,out.parent); write_catalog(articles,out.parent); out.write_bytes(xml); print(f"Wrote {out} and data/articles.json ({len(articles)} items)")
 if __name__=="__main__": main()
 
 

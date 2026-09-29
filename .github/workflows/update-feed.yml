@@ -31,6 +31,8 @@ jobs:
         run: python generate_feed.py
       - name: Validate feed
         run: python validate_feed.py
+      - name: Test Reed Discover
+        run: python -m unittest discover -s tests -v
       - uses: actions/configure-pages@v5
         with:
           enablement: true

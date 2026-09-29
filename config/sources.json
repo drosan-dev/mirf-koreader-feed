@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "mirf",
+      "name": "Мир фантастики",
+      "homepage": "https://www.mirf.ru/",
+      "feed": "https://www.mirf.ru/feed",
+      "adapter": "mirf",
+      "enabled": true
+    }
+  ]
+}

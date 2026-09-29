@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f1e8">
+  <meta name="description" content="Reed Discover — спокойная персональная лента для вдумчивого чтения.">
+  <title>Reed Discover — Personal Reading Feed</title>
+  <link rel="stylesheet" href="assets/app.css">
+  <script defer src="data/articles.js"></script>
+  <script defer src="assets/app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#discover" aria-label="Reed Discover, на главную"><span>R</span> Reed Discover</a>
+    <nav aria-label="Основная навигация">
+      <a href="#discover" data-route="discover">Рекомендации</a>
+      <a href="#saved" data-route="saved">Моя подборка <b id="saved-count" class="count">0</b></a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" id="discover-heading">
+      <p class="eyebrow">PERSONAL READING FEED · 0.1</p>
+      <h1>Выбирайте, что действительно<br>хочется прочитать.</h1>
+      <p>Свежие материалы из проверенных источников. Без алгоритмической суеты — только ваш список.</p>
+    </section>
+
+    <section class="toolbar" aria-label="Фильтры">
+      <div>
+        <h2 id="view-title">Новые рекомендации</h2>
+        <p id="view-subtitle">Первый источник — журнал «Мир фантастики»</p>
+      </div>
+      <label class="select-label">Тема
+        <select id="category-filter"><option value="">Все темы</option></select>
+      </label>
+    </section>
+
+    <div id="status" class="status" role="status">Загружаем свежие материалы…</div>
+    <section id="feed" class="feed" aria-labelledby="view-title"></section>
+    <section id="empty" class="empty" hidden>
+      <p class="empty-mark">R</p><h2>Здесь пока тихо</h2>
+      <p>Добавьте материалы из рекомендаций — они останутся в этом браузере.</p>
+      <a class="primary-link" href="#discover">Посмотреть рекомендации</a>
+    </section>
+  </main>
+
+  <footer>
+    <p>Reed Discover 0.1 · Данные подборки хранятся только в этом браузере.</p>
+    <a href="feed.xml">RSS для KOReader</a>
+  </footer>
+</body>
+</html>
