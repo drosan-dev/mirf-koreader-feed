@@ -5,15 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f1e8">
   <meta name="description" content="Reed Discover — спокойная персональная лента для вдумчивого чтения.">
+  <meta name="robots" content="noindex,nofollow,noarchive">
   <title>Reed Discover — Personal Reading Feed</title>
   <link rel="stylesheet" href="assets/app.css">
-  <script defer src="data/articles.js"></script>
   <script defer src="assets/app.js"></script>
 </head>
-<body>
+<body class="locked">
+  <section id="access-gate" class="access-gate">
+    <div class="access-card"><span class="access-mark">R</span><h1>Reed Discover</h1><p>Введите личный токен доступа.</p><form id="access-form"><input id="access-token" type="password" required autocomplete="current-password" placeholder="Токен"><button type="submit">Открыть</button></form><p id="access-error" class="form-error" hidden>Неверный токен</p></div>
+  </section>
   <header class="site-header">
     <a class="brand" href="#discover" aria-label="Reed Discover, на главную"><span>R</span> Reed Discover</a>
     <nav aria-label="Основная навигация">
+      <a href="#today" data-route="today">Сегодня</a>
       <a href="#discover" data-route="discover">Рекомендации</a>
       <a href="#saved" data-route="saved">Моя подборка <b id="saved-count" class="count">0</b></a>
       <button id="add-link-toggle" class="nav-action" type="button">+ Добавить ссылку</button>

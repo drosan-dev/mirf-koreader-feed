@@ -1,10 +1,11 @@
 const STORAGE_KEY = "reed-discover.library.v1";
+const ACCESS_HASH = "75c3b974218468a82111469efd1ecb1d1ae8ae2495ac1bb832d411f837344c78";
 
 function readLibrary(storage = localStorage) {
   try {
     const value = JSON.parse(storage.getItem(STORAGE_KEY) || "{}");
-    return value && value.version === 1 && value.items ? value : { version: 1, items: {} };
-  } catch { return { version: 1, items: {} }; }
+    return value && value.version === 1 && value.items ? { ...value, dismissed: value.dismissed || {} } : { version: 1, items: {}, dismissed: {} };
+  } catch { return { version: 1, items: {}, dismissed: {} }; }
 }
 
 function updateItem(library, id, change) {
@@ -47,9 +48,10 @@ function articleCard(article) {
   const published = new Intl.DateTimeFormat("ru", { day: "numeric", month: "short" }).format(new Date(article.published));
   const readingUrl = article.readerUrl || article.url;
   const external = !article.readerUrl ? ' target="_blank" rel="noreferrer"' : "";
+  const saveButton = `<button class="save ${selected ? "saved" : ""}" data-action="save" data-id="${article.id}">${selected ? "✓ В подборке" : "+ Почитать позже"}</button>`;
   const primary = state.route === "saved"
     ? `<button class="read ${read ? "saved" : ""}" data-action="read" data-id="${article.id}">${read ? "✓ Прочитано" : "Отметить прочитанным"}</button><button class="remove" data-action="remove" data-id="${article.id}">Удалить</button>`
-    : `<button class="save ${selected ? "saved" : ""}" data-action="save" data-id="${article.id}">${selected ? "✓ В подборке" : "+ Почитать позже"}</button>`;
+    : state.route === "today" ? `${saveButton}<button class="remove" data-action="dismiss" data-id="${article.id}">Не читать</button>` : saveButton;
   return `<article class="card${read ? " is-read" : ""}">
     <div class="meta"><span class="source">${escapeHtml(article.source)}</span><span>·</span><span>${published}</span><span>·</span><span>${formatMinutes(article.readingMinutes)}</span></div>
     <h3><a href="${escapeHtml(readingUrl)}"${external}>${escapeHtml(article.title)}</a></h3>
@@ -62,11 +64,13 @@ function render() {
   const feed = document.querySelector("#feed");
   const empty = document.querySelector("#empty");
   const savedIds = new Set(Object.keys(state.library.items));
-  const base = state.route === "saved" ? state.articles.filter(a => savedIds.has(a.id)) : state.articles.filter(a => !a.custom);
+  const dismissedIds = new Set(Object.keys(state.library.dismissed));
+  const today = new Date().toLocaleDateString("sv-SE");
+  const base = state.route === "saved" ? state.articles.filter(a => savedIds.has(a.id)) : state.route === "today" ? state.articles.filter(a => !a.custom && !dismissedIds.has(a.id) && new Date(a.published).toLocaleDateString("sv-SE") === today) : state.articles.filter(a => !a.custom && !dismissedIds.has(a.id));
   const articles = state.category ? base.filter(a => a.category === state.category) : base;
   document.querySelector("#saved-count").textContent = savedIds.size;
-  document.querySelector("#view-title").textContent = state.route === "saved" ? "Моя подборка" : "Новые рекомендации";
-  document.querySelector("#view-subtitle").textContent = state.route === "saved" ? `${base.length} ${base.length === 1 ? "материал" : "материалов"} · хранится в этом браузере` : "Первый источник — журнал «Мир фантастики»";
+  document.querySelector("#view-title").textContent = state.route === "saved" ? "Моя подборка" : state.route === "today" ? "Сегодня" : "Новые рекомендации";
+  document.querySelector("#view-subtitle").textContent = state.route === "saved" ? `${base.length} ${base.length === 1 ? "материал" : "материалов"} · хранится в этом браузере` : state.route === "today" ? `${base.length} свежих материалов из ваших источников` : "Все проверенные источники";
   document.querySelectorAll("[data-route]").forEach(a => a.classList.toggle("active", a.dataset.route === state.route));
   feed.innerHTML = articles.map(articleCard).join("");
   empty.hidden = articles.length > 0;
@@ -83,7 +87,7 @@ function render() {
 }
 
 function route() {
-  state.route = location.hash === "#saved" ? "saved" : "discover";
+  state.route = location.hash === "#saved" ? "saved" : location.hash === "#today" ? "today" : "discover";
   state.category = ""; document.querySelector("#category-filter").value = ""; render();
 }
 
@@ -139,12 +143,8 @@ async function exportEpub(articles, button) {
 async function start() {
   state.library = readLibrary();
   try {
-    if (globalThis.REED_ARTICLES) state.articles = globalThis.REED_ARTICLES.articles;
-    else {
-      const response = await fetch("data/articles.json", { cache: "no-cache" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      state.articles = (await response.json()).articles;
-    }
+    if (!globalThis.REED_ARTICLES) await new Promise((resolve,reject) => { const script=document.createElement("script"); script.src="data/articles.js"; script.onload=resolve; script.onerror=()=>reject(new Error("Каталог недоступен")); document.head.append(script); });
+    state.articles = globalThis.REED_ARTICLES.articles;
     const customArticles = Object.values(state.library.items).map(item => item.article).filter(Boolean);
     state.articles.push(...customArticles.filter(custom => !state.articles.some(article => article.id === custom.id)));
     const categories = [...new Set(state.articles.filter(a => !a.custom).map(a => a.category).filter(Boolean))].sort();
@@ -177,8 +177,29 @@ async function start() {
     if (action === "save") state.library = updateItem(state.library, id, current ? null : { savedAt: new Date().toISOString(), read: false });
     if (action === "remove") state.library = updateItem(state.library, id, null);
     if (action === "read") state.library = updateItem(state.library, id, { read: !current?.read, readAt: current?.read ? null : new Date().toISOString() });
+    if (action === "dismiss") { state.library.dismissed[id] = new Date().toISOString(); delete state.library.items[id]; }
     saveLibrary(); render();
   });
 }
 
-if (typeof document !== "undefined") start();
+async function tokenHash(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2,"0")).join("");
+}
+
+async function authorize() {
+  const supplied = location.hash.startsWith("#token=") ? decodeURIComponent(location.hash.slice(7)) : "";
+  const remembered = localStorage.getItem("reed-discover.access") === ACCESS_HASH;
+  if (remembered || supplied && await tokenHash(supplied) === ACCESS_HASH) {
+    localStorage.setItem("reed-discover.access", ACCESS_HASH); document.body.classList.remove("locked");
+    if (supplied) history.replaceState(null,"",`${location.pathname}${location.search}#today`);
+    start(); return;
+  }
+  document.querySelector("#access-form").addEventListener("submit", async event => {
+    event.preventDefault(); const valid = await tokenHash(document.querySelector("#access-token").value) === ACCESS_HASH;
+    if (!valid) { document.querySelector("#access-error").hidden = false; return; }
+    localStorage.setItem("reed-discover.access", ACCESS_HASH); document.body.classList.remove("locked"); location.hash = "today"; start();
+  });
+}
+
+if (typeof document !== "undefined") authorize();
