@@ -161,7 +161,7 @@ def classification_fields(url,html="",error="",overrides=None):
  override=(overrides or {}).get(url)
  if override:
   return {"contentClass":override["class"],"classificationConfidence":1.0,"classificationReason":override.get("reason","Ручное правило"),"classificationSource":"manual"}
- result=classify_html(html,error)
+ result=classify_html(html,error,url)
  return {"contentClass":result.content_class,"classificationConfidence":result.confidence,"classificationReason":result.reason,"classificationSource":"automatic"}
 
 def build_catalog(articles,overrides=None):

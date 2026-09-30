@@ -46,7 +46,7 @@ class ReedDiscoverTest(unittest.TestCase):
         cases=json.loads((Path(__file__).parent/"fixtures"/"classification_cases.json").read_text(encoding="utf-8"))
         for case in cases:
             with self.subTest(url=case["url"]):
-                result=classify_html(case["html"])
+                result=classify_html(case["html"],source_url=case["url"])
                 self.assertEqual(result.content_class,case["expected"],result.reason)
                 self.assertGreaterEqual(result.confidence,.55)
 
