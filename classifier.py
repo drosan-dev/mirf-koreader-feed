@@ -49,11 +49,15 @@ def classify_text(text: str, paragraph_count: int = 0, heading_count: int = 0, e
   if news_hits >= 3 or (podcast and news_hits >= 2): return Classification("news",.7,f"Короткая служебная или событийная публикация; новостных признаков {news_hits}")
   if article_hits >= 4: return Classification("article",.68,f"Короткий, но самостоятельный разбор; аналитических признаков {article_hits}")
   return Classification("uncertain",0.15,f"Недостаточно основного текста ({words} слов)")
- article_score=article_hits*1.15 + min(heading_count,3)*0.45 + min(paragraph_count/8,1.5)
+ if (podcast and article_hits <= 1) or (news_hits >= 1 and article_hits == 0 and words < 500):
+  confidence=min(.92,.64+news_hits*.07)
+  return Classification("news",round(confidence,2),f"Страница сообщает о событии или представляет выпуск без самостоятельного разбора; новостных признаков {news_hits}")
+ structure_bonus=(min(heading_count,3)*0.25 + min(paragraph_count/12,1.0)) if article_hits else 0
+ article_score=article_hits*1.15 + structure_bonus
  news_score=news_hits*1.1
  if podcast and words < 700: news_score += 2.5
- if words >= 700: article_score += 1.2
- elif words >= 350: article_score += .55
+ if article_hits and words >= 700: article_score += 1.2
+ elif article_hits and words >= 350: article_score += .55
  if news_score-article_score >= 1.6:
   confidence=min(.96,.58+(news_score-article_score)*.08)
   return Classification("news",round(confidence,2),f"Преобладает сообщение о событии или выпуске; новостных признаков {news_hits}, аналитических {article_hits}")

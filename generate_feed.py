@@ -22,7 +22,11 @@ def fetch(session,url):
  last=None
  for attempt in range(4):
   try:
-   r=session.get(url,timeout=TIMEOUT); r.raise_for_status(); return r.text
+   r=session.get(url,timeout=TIMEOUT); r.raise_for_status()
+   encoding=getattr(r,"encoding",None)
+   if not encoding or encoding.lower() in {"iso-8859-1", "latin-1"}:
+    r.encoding=getattr(r,"apparent_encoding",None) or "utf-8"
+   return r.text
   except requests.RequestException as exc:
    last=exc
    if attempt<3: time.sleep(2**attempt)
