@@ -11,6 +11,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup, Comment
 from lxml import etree
+from classifier import classify_html
 BASE_URL="https://www.mirf.ru"; SOURCE_FEED_URL=f"{BASE_URL}/feed"; PUBLIC_BASE_URL="https://drosan-dev.github.io/mirf-koreader-feed"; TIMEOUT=45
 PAGE_STYLE="body{font-family:serif;line-height:1.45;margin:1em}img{max-width:100%;height:auto}figure{margin:1em 0}figcaption{font-size:.85em;font-style:italic;margin-top:.35em}blockquote{margin:1em .4em;padding:.25em .8em;border-left:4px solid #555}aside{margin:1em 0;padding:.7em;border:1px solid #777}h2,h3,h4{margin-top:1.4em;margin-bottom:.5em}ul,ol{padding-left:1.5em}"
 @dataclass
@@ -148,12 +149,23 @@ def write_pages(articles,out):
  for old in pages.glob("*.html"):
   if old.name not in expected: old.unlink()
 
-def build_catalog(articles):
+def load_classification_overrides(path="config/classification_overrides.json"):
+ try: return json.loads(Path(path).read_text(encoding="utf-8")).get("overrides",{})
+ except (OSError,json.JSONDecodeError): return {}
+
+def classification_fields(url,html="",error="",overrides=None):
+ override=(overrides or {}).get(url)
+ if override:
+  return {"contentClass":override["class"],"classificationConfidence":1.0,"classificationReason":override.get("reason","Ручное правило"),"classificationSource":"manual"}
+ result=classify_html(html,error)
+ return {"contentClass":result.content_class,"classificationConfidence":result.confidence,"classificationReason":result.reason,"classificationSource":"automatic"}
+
+def build_catalog(articles,overrides=None):
  """Build the small, source-neutral index consumed by Reed Discover's UI."""
  data=[]
  for a in sorted(articles,key=lambda x:x.published,reverse=True):
   words=len(BeautifulSoup(a.html,"lxml").get_text(" ",strip=True).split())
-  data.append({
+  item={
    "id":hashlib.sha256(a.url.encode()).hexdigest()[:20],
    "title":a.title,
    "source":"Мир фантастики",
@@ -166,8 +178,9 @@ def build_catalog(articles):
    "url":a.url,
    "readerUrl":f"items/{page_name(a.url)}",
    "image":a.image,
-  })
- return {"version":1,"generatedAt":datetime.now(timezone.utc).isoformat(),"articles":data}
+  }
+  item.update(classification_fields(a.url,a.html,overrides=overrides)); data.append(item)
+ return {"version":2,"generatedAt":datetime.now(timezone.utc).isoformat(),"articles":data}
 
 def write_catalog(articles,out):
  data_dir=out/"data"; data_dir.mkdir(parents=True,exist_ok=True)
@@ -182,7 +195,7 @@ def parse_date(value):
   try: return datetime.fromisoformat(value.replace("Z","+00:00")).astimezone(timezone.utc)
   except (TypeError,ValueError): return datetime.now(timezone.utc)
 
-def discover_rss_catalog(session,source):
+def discover_rss_catalog(session,source,overrides=None):
  """Normalize a regular RSS/Atom feed into lightweight recommendation cards."""
  parser=etree.XMLParser(recover=True); root=etree.fromstring(fetch(session,source["feed"]).encode(),parser); result=[]
  nodes=root.xpath('//*[local-name()="item"]') or root.xpath('//*[local-name()="entry"]')
@@ -201,16 +214,19 @@ def discover_rss_catalog(session,source):
   raw=text_of("encoded","content","description","summary"); summary=re.sub(r"\s+"," ",BeautifulSoup(raw,"lxml").get_text(" ",strip=True)).strip()
   if len(summary)>320: summary=summary[:317].rsplit(" ",1)[0]+"…"
   words=len(summary.split()); published=parse_date(text_of("pubDate","published","updated","date"))
-  result.append({"id":hashlib.sha256(link.encode()).hexdigest()[:20],"title":title,"source":source["name"],"sourceId":source["id"],"summary":summary or "Открыть материал на сайте источника","readingMinutes":max(1,round(words/180)) if words>=60 else None,"published":published.isoformat(),"category":source.get("topic",""),"author":text_of("creator","author"),"url":link,"readerUrl":None,"image":""})
+  item={"id":hashlib.sha256(link.encode()).hexdigest()[:20],"title":title,"source":source["name"],"sourceId":source["id"],"summary":summary or "Открыть материал на сайте источника","readingMinutes":max(1,round(words/180)) if words>=60 else None,"published":published.isoformat(),"category":source.get("topic",""),"author":text_of("creator","author"),"url":link,"readerUrl":None,"image":""}
+  try: page_html=fetch(session,link); item.update(classification_fields(link,page_html,overrides=overrides))
+  except Exception as error: item.update(classification_fields(link,error=str(error),overrides=overrides))
+  result.append(item)
  return result
 
-def append_external_sources(session,catalog,config_path="config/sources.json"):
+def append_external_sources(session,catalog,config_path="config/sources.json",overrides=None):
  config=json.loads(Path(config_path).read_text(encoding="utf-8"))
  seen={item["url"] for item in catalog["articles"]}
  for source in config["sources"]:
   if not source.get("enabled") or source.get("adapter")!="rss": continue
   try:
-   entries=discover_rss_catalog(session,source)
+   entries=discover_rss_catalog(session,source,overrides)
    catalog["articles"].extend(item for item in entries if item["url"] not in seen)
    seen.update(item["url"] for item in entries); print(f"RSS {source['name']}: {len(entries)} items")
   except Exception as error: print(f"RSS {source['name']} skipped: {error}")
@@ -238,7 +254,7 @@ def main():
    url=item.findtext("guid","")
    if not url or url in seen: continue
    articles.append(Article(url,item.findtext("title",""),item.findtext("description",""),datetime.strptime(item.findtext("pubDate"),"%a, %d %b %Y %H:%M:%S %z"),item.findtext("author",""),item.findtext("category",""),item.findtext("{http://purl.org/rss/1.0/modules/content/}encoded",""))); seen.add(url)
- articles=sorted(articles,key=lambda x:x.published,reverse=True)[:args.limit]; xml=build_feed(articles); out=Path(args.output); out.parent.mkdir(parents=True,exist_ok=True); write_pages(articles,out.parent); catalog=append_external_sources(session,build_catalog(articles)); data_dir=out.parent/"data"; data_dir.mkdir(parents=True,exist_ok=True); (data_dir/"articles.json").write_text(json.dumps(catalog,ensure_ascii=False,indent=2),encoding="utf-8"); (data_dir/"articles.js").write_text("window.REED_ARTICLES="+json.dumps(catalog,ensure_ascii=False,separators=(",",":"))+";",encoding="utf-8"); out.write_bytes(xml); print(f"Wrote {out} and data/articles.json ({len(catalog['articles'])} recommendations)")
+ overrides=load_classification_overrides(); articles=sorted(articles,key=lambda x:x.published,reverse=True)[:args.limit]; xml=build_feed(articles); out=Path(args.output); out.parent.mkdir(parents=True,exist_ok=True); write_pages(articles,out.parent); catalog=append_external_sources(session,build_catalog(articles,overrides),overrides=overrides); data_dir=out.parent/"data"; data_dir.mkdir(parents=True,exist_ok=True); (data_dir/"articles.json").write_text(json.dumps(catalog,ensure_ascii=False,indent=2),encoding="utf-8"); (data_dir/"articles.js").write_text("window.REED_ARTICLES="+json.dumps(catalog,ensure_ascii=False,separators=(",",":"))+";",encoding="utf-8"); out.write_bytes(xml); print(f"Wrote {out} and data/articles.json ({len(catalog['articles'])} recommendations)")
 if __name__=="__main__": main()
 
 
