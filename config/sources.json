@@ -67,7 +67,8 @@
       "adapter": "rss",
       "topic": "Геймдизайн",
       "limit": 5,
-      "enabled": true
+      "enabled": false,
+      "disabledReason": "Источник преимущественно публикует новости и анонсы"
     },
     {
       "id": "stopgame-reviews",
